@@ -65,9 +65,9 @@ def get_Z(nw,lambd,W,Z,att,dm,Deq,bscat,ext,vfall,mu,wl):
     fact=1e6/np.pi**5/0.93*wl**4
     print(W.shape)
     nP=W.shape[0]
-    print(nP,mu,fact)
+    #print(nP,mu,fact)
     print(fact)
-    print(bscatInt)
+    #print(bscatInt)
     for j in range(nP):
         vdop=0
         nc0=0
@@ -83,10 +83,13 @@ def get_Z(nw,lambd,W,Z,att,dm,Deq,bscat,ext,vfall,mu,wl):
             nc0=nc0+nw[j]*Nd
             Vol=Vol+nw[j]*Nd*(1e-3*d)**3*np.pi/6
         Z[j]=np.log10(Z[j]*fact)*10
-        dm[j]=dm[j]/W[j]
+        dm[j]=dm[j]/(W[j]+1e-9)
 
 fnameIce='../scatter-1.1/ice-self-similar-aggregates_13-GHz_scat.nc'
 fnameRain='../scatter-1.1/liquid-water_13-GHz_scat.nc'
+
+fnameIce35='../scatter-1.1/ice-self-similar-aggregates_35-GHz_scat.nc'
+fnameRain35='../scatter-1.1/liquid-water_35-GHz_scat.nc'
 
 def readScatProf(fname):
     fh=Dataset(fname,'r')
@@ -115,50 +118,16 @@ def readScatProfR(fname):
 
 temp,mass,fraction,bscat,Deq,ext,scat,g,vfall=readScatProf(fnameIce)
 temp_r,mass_r,bscat_r,Deq_r,ext_r,scat_r,g_r,vfall_r=readScatProfR(fnameRain)
+
+tempKa,massKa,fractionKa,bscatKa,DeqKa,extKa,scatKa,gKa,vfallKa=readScatProf(fnameIce35)
+tempKa_r,massKa_r,bscatKa_r,DeqKa_r,extKa_r,scatKa_r,gKa_r,vfallKa_r=readScatProfR(fnameRain35)
+#stop
 freq=13.8
+freqKa=35.5
 #freq=94.0
 wl=300/freq
-
-att_total=rwc.copy()*0
-z_total=rwc.copy()*0.0
-a=np.nonzero(rwc>0.01)
-mu=2.0
-
-nw_r,lambd_r=nw_lambd(rwc[a],ncr[a],mu)
-w_r=rwc[a].copy()*0.0
-z_r=rwc[a].copy()*0.0
-att_r=rwc[a].copy()*0.0
-dm_r=rwc[a].copy()*0.0
-get_Z(nw_r,lambd_r,w_r,z_r,att_r,dm_r,Deq_r,bscat_r[9,:],ext_r[9,:],vfall_r,mu,wl)
-z_total[a]+=10.**(0.1*z_r)
-att_total[a]+=att_r
-#stop
-
-a=np.nonzero(swc>0.01)
-nw_s,lambd_s=nw_lambd(swc[a],ncs[a],mu)
-w_s=swc[a].copy()*0.0
-z_s=swc[a].copy()*0.0
-att_s=swc[a].copy()*0.0
-dm_s=rwc[a].copy()*0.0
-get_Z(nw_s,lambd_s,w_s,z_s,att_s,dm_s,Deq[12,:],bscat[-1,12,:],ext[-1,12,:],\
-      vfall[12,:],mu,wl)
-z_total[a]+=10.**(0.1*z_s)
-att_total[a]+=att_s
-
-a=np.nonzero(gwc>0.01)
-nw_g,lambd_g=nw_lambd(gwc[a],ncg[a],mu)
-w_g=gwc[a].copy()*0.0
-z_g=gwc[a].copy()*0.0
-att_g=gwc[a].copy()*0.0
-dm_g=gwc[a].copy()*0.0
-get_Z(nw_g,lambd_g,w_g,z_g,att_g,dm_g,Deq[14,:],bscat[-1,14,:],ext[-1,14,:],\
-      vfall[14,:],mu,wl)
-z_total[a]+=10.**(0.1*z_g)
-att_total[a]+=att_g
-
-z_total=10*np.log10(z_total+1e-9)
-z_m=np.ma.array(z_total,mask=z_total<-10)
-z_att_m=z_m.copy()
+wlKa=300/freqKa
+mu=2
 @jit(nopython=True)
 def gett_atten(z_att_m,z_m,att_tot,z):
     a=np.nonzero(z_m[0,:,:]>0)
@@ -172,13 +141,67 @@ def gett_atten(z_att_m,z_m,att_tot,z):
                 pia_tot+=att_tot[k,i,j]*(z[k+1,i,j]-z[k,i,j])*4.343
             else:
                 z_att_m[k,i,j]-=pia_tot
-            
+
+                
+def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
+          Deq_r,ext_r,bscat_r,scat_r,g_r,vfall_r,wl):
+    print(wl)
+    att_total=rwc.copy()*0
+    z_total=rwc.copy()*0.0
+    a=np.nonzero(rwc>0.01)
+    
+    nw_r,lambd_r=nw_lambd(rwc[a],ncr[a],mu)
+    w_r=rwc[a].copy()*0.0
+    z_r=rwc[a].copy()*0.0
+    att_r=rwc[a].copy()*0.0
+    dm_r=rwc[a].copy()*0.0
+    get_Z(nw_r,lambd_r,w_r,z_r,att_r,dm_r,Deq_r,bscat_r[9,:],ext_r[9,:],vfall_r,mu,wl)
+    z_total[a]+=10.**(0.1*z_r)
+    att_total[a]+=att_r
+
+    a=np.nonzero(swc>0.01)
+    nw_s,lambd_s=nw_lambd(swc[a],ncs[a],mu)
+    w_s=swc[a].copy()*0.0
+    z_s=swc[a].copy()*0.0
+    att_s=swc[a].copy()*0.0
+    dm_s=swc[a].copy()*0.0
+    get_Z(nw_s,lambd_s,w_s,z_s,att_s,dm_s,Deq[12,:],bscat[-1,12,:],ext[-1,12,:],\
+          vfall[12,:],mu,wl)
+    z_total[a]+=10.**(0.1*z_s)
+    att_total[a]+=att_s
+    
+    a=np.nonzero(gwc>0.01)
+    nw_g,lambd_g=nw_lambd(gwc[a],ncg[a],mu)
+    w_g=gwc[a].copy()*0.0
+    z_g=gwc[a].copy()*0.0
+    att_g=gwc[a].copy()*0.0
+    dm_g=gwc[a].copy()*0.0
+    get_Z(nw_g,lambd_g,w_g,z_g,att_g,dm_g,Deq[14,:],bscat[-1,14,:],ext[-1,14,:],\
+          vfall[14,:],mu,wl)
+    z_total[a]+=10.**(0.1*z_g)
+    att_total[a]+=att_g
+    
+    z_total=10*np.log10(z_total+1e-9)
+    z_m=np.ma.array(z_total,mask=z_total<-10)
+    z_att_m=z_m.copy()
+    gett_atten(z_att_m,z_m,att_total,z)
+    return z_m,z_att_m
+    
 import matplotlib.pyplot as plt
 #plt.hist(np.log10(nw_s/0.08))
 
-gett_atten(z_att_m,z_m,att_total,z)
+#z_m,z_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,scat,g,vfall,\
+#                  Deq_r,ext_r,scat_r,g_r,vfall_r,wl)
+
+zka_m,zka_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,DeqKa,extKa,bscatKa,scatKa,gKa,vfallKa,\
+                      DeqKa_r,extKa_r,bscatKa_r,scatKa_r,gKa_r,vfallKa_r,wlKa)
+
+z_m,z_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
+                  Deq_r,ext_r,bscat_r,scat_r,g_r,vfall_r,wl)
+
+
 nx=z_m.shape[-1]
-plt.pcolormesh(np.arange(nx),z[:-1,0,0],z_att_m[:,250,:]-z_m[:,250,:],vmin=0, vmax=10,cmap='jet')
+plt.pcolormesh(np.arange(nx),z[:-1,0,0],zka_att_m[:,250,:],vmin=0, vmax=35,cmap='jet')
 plt.ylim(0,15)
 plt.xlim(300,650)
 plt.colorbar()
@@ -190,19 +213,12 @@ def makecfad(z_m,z,cfad):
     a=np.nonzero(z_m>0)
     for i, j, k in zip(a[0],a[1],a[2]):
         i0=int(z_m[i,j,k])
-        j0=int((z[i,j,k]+0.1)/0.250)
-        if j0<60 and i0<50:
-            cfad[i0,j0]+=1
-        z1=z[i,j,k]*0.666+z[i+1,j,k]*0.333
+        z1=z[i,j,k]*0.5+z[i+1,j,k]*0.5
         j0=int((z1)/0.250)
         if j0<60 and i0<50:
             cfad[i0,j0]+=1
-        z2=z[i,j,k]*0.333+z[i+1,j,k]*0.666
-        j0=int((z2)/0.250)
-        if j0<60 and i0<50:
-            cfad[i0,j0]+=1
 
-makecfad(z_att_m,z,cfad)
+makecfad(zka_att_m,z,cfad)
 #swc=1.0
 #rhow=1e6
 #n0=0.08e8

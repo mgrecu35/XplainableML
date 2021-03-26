@@ -29,9 +29,9 @@ def read_wrf(fname,it):
     xlong=f['XLONG'][0,:,:]
     R=287.058  #J*kg-1*K-1
     rho=prs/(R*T)
-    return qr,qs,qg,ncr,ncs,ncg,rho,z
+    return qr,qs,qg,ncr,ncs,ncg,rho,z,T
 it=0
-qr,qs,qg,ncr,ncs,ncg,rho,z=read_wrf(fname,it)
+qr,qs,qg,ncr,ncs,ncg,rho,z,T=read_wrf(fname,it)
 
 
 swc=rho*(qs)*1e3
@@ -148,9 +148,12 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
     print(wl)
     att_total=rwc.copy()*0
     z_total=rwc.copy()*0.0
+
     a=np.nonzero(rwc>0.01)
-    
     nw_r,lambd_r=nw_lambd(rwc[a],ncr[a],mu)
+    nwr=rwc.copy()*0.0
+    nwr[a]=np.log10(nw_r)
+    
     w_r=rwc[a].copy()*0.0
     z_r=rwc[a].copy()*0.0
     att_r=rwc[a].copy()*0.0
@@ -161,6 +164,9 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
 
     a=np.nonzero(swc>0.01)
     nw_s,lambd_s=nw_lambd(swc[a],ncs[a],mu)
+    nws=rwc.copy()*0.0
+    nws[a]=np.log10(nw_s)
+    
     w_s=swc[a].copy()*0.0
     z_s=swc[a].copy()*0.0
     att_s=swc[a].copy()*0.0
@@ -172,6 +178,9 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
     
     a=np.nonzero(gwc>0.01)
     nw_g,lambd_g=nw_lambd(gwc[a],ncg[a],mu)
+    nwg=rwc.copy()*0.0
+    nwg[a]=np.log10(nw_g)
+    
     w_g=gwc[a].copy()*0.0
     z_g=gwc[a].copy()*0.0
     att_g=gwc[a].copy()*0.0
@@ -185,7 +194,7 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
     z_m=np.ma.array(z_total,mask=z_total<-10)
     z_att_m=z_m.copy()
     gett_atten(z_att_m,z_m,att_total,z)
-    return z_m,z_att_m
+    return z_m,z_att_m, att_total, nwr,nws,nwg
     
 import matplotlib.pyplot as plt
 #plt.hist(np.log10(nw_s/0.08))
@@ -193,12 +202,58 @@ import matplotlib.pyplot as plt
 #z_m,z_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,scat,g,vfall,\
 #                  Deq_r,ext_r,scat_r,g_r,vfall_r,wl)
 
-zka_m,zka_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,DeqKa,extKa,bscatKa,scatKa,gKa,vfallKa,\
+zka_m,zka_att_m,attKa,nwr,nws,nwg=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,DeqKa,extKa,bscatKa,scatKa,gKa,vfallKa,\
                       DeqKa_r,extKa_r,bscatKa_r,scatKa_r,gKa_r,vfallKa_r,wlKa)
 
-z_m,z_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
+z_m,z_att_m,att,nwr,nws,nwg=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
                   Deq_r,ext_r,bscat_r,scat_r,g_r,vfall_r,wl)
 
+
+a=np.nonzero(z_m[0,:,:]>0)
+
+tData=np.zeros((len(a[0]),60,11),float)
+hgrid=0.125+np.arange(60)*0.25
+
+@jit(nopython=True)
+def gridData(z_att_m,zka_att_m,att,attKa,rwc,swc,gwc,nwr,nws,nwg,z,T,ai,aj,hgrid,tData):
+    ic=0
+    n=ai.shape[0]
+    for k in range(n):
+        i=ai[k]
+        j=aj[k]
+        zm=(z[:-1,i,j]+z[1:,i,j])*0.5
+        zku=np.interp(hgrid,zm,z_att_m[:,i,j])
+        zka=np.interp(hgrid,zm,zka_att_m[:,i,j])
+        attku=np.interp(hgrid,zm,att[:,i,j])[::-1].cumsum()
+        attka=np.interp(hgrid,zm,attKa[:,i,j])[::-1].cumsum()
+        rain=np.interp(hgrid,zm,rwc[:,i,j])
+        snow=np.interp(hgrid,zm,swc[:,i,j])
+        graup=np.interp(hgrid,zm,gwc[:,i,j])
+        nrain=np.interp(hgrid,zm,nwr[:,i,j])
+        nsnow=np.interp(hgrid,zm,nws[:,i,j])
+        ngraup=np.interp(hgrid,zm,nwg[:,i,j])
+        temp=np.interp(hgrid,zm,T[:,i,j])
+        tData[ic,:,0]=zku
+        tData[ic,:,1]=zka
+        tData[ic,:,2]=attku[::-1]
+        tData[ic,:,3]=attka[::-1]
+        tData[ic,:,4]=rain
+        tData[ic,:,5]=snow
+        tData[ic,:,6]=graup
+        tData[ic,:,7]=nrain
+        tData[ic,:,8]=nsnow
+        tData[ic,:,9]=ngraup
+        tData[ic,:,10]=temp
+        ic+=1
+            
+gridData(z_m,zka_att_m,att,attKa,rwc,swc,gwc,nwr,nws,nwg,z,T,a[0],a[1],hgrid,tData)
+
+import xarray as xr
+a1=np.nonzero(tData[:,0,0]>0)
+tData=tData[a1[0],:,:]
+tDataX=xr.DataArray(tData)
+d=xr.Dataset({"tData":tDataX})
+d.to_netcdf("trainingData.nc")
 
 nx=z_m.shape[-1]
 plt.pcolormesh(np.arange(nx),z[:-1,0,0],zka_att_m[:,250,:],vmin=0, vmax=35,cmap='jet')

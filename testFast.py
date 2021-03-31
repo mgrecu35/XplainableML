@@ -5,8 +5,8 @@ from netCDF4 import Dataset
 
 fname='wrfout_d04_2018-08-03_15:00:00.nc'
 
-fname='../LowLevel/wrfout_d03_2018-06-25_03:36:00'
-fname='../extract_wrfout_d03_2011-05-20_23_00_00'
+#fname='../LowLevel/wrfout_d03_2018-06-25_03:36:00'
+#fname='../extract_wrfout_d03_2011-05-20_23_00_00'
 
 def read_wrf(fname,it):
     f=Dataset(fname)
@@ -55,7 +55,7 @@ def nw_lambd(swc,nc,mu):
 from numba import jit
 
 @jit(nopython=True)
-def get_Z(nw,lambd,W,Z,att,dm,Deq,bscat,ext,vfall,mu,wl):
+def get_Z(w,nw,lambd,W,Z,att,dm,Deq,bscat,ext,vfall,mu,wl):
     dD=0.05
     rhow=1 #gcm-3
     Dint=np.arange(160)*dD+dD/2.0
@@ -84,7 +84,9 @@ def get_Z(nw,lambd,W,Z,att,dm,Deq,bscat,ext,vfall,mu,wl):
             Vol=Vol+nw[j]*Nd*(1e-3*d)**3*np.pi/6
         Z[j]=np.log10(Z[j]*fact)*10
         dm[j]=dm[j]/(W[j]+1e-9)
-
+        nw_d=4.0**4/np.pi/1e1*W[j]/dm[j]**4
+        nw[j]=nw_d
+        #print(nw[j],nw_d,W[j],w[j])
 fnameIce='../scatter-1.1/ice-self-similar-aggregates_13-GHz_scat.nc'
 fnameRain='../scatter-1.1/liquid-water_13-GHz_scat.nc'
 
@@ -114,14 +116,21 @@ def readScatProfR(fname):
     vfall=fh['fall_speed'][:]
     scat=fh['scat'][:]
     g=fh['g'][:]
-    return temp,mass,bscat,Deq,ext,scat,g,vfall
+    #print(fh)
+    #stop
+    return temp,mass,bscat,Deq,ext,scat,g,vfall,fh
 
 temp,mass,fraction,bscat,Deq,ext,scat,g,vfall=readScatProf(fnameIce)
-temp_r,mass_r,bscat_r,Deq_r,ext_r,scat_r,g_r,vfall_r=readScatProfR(fnameRain)
-
-tempKa,massKa,fractionKa,bscatKa,DeqKa,extKa,scatKa,gKa,vfallKa=readScatProf(fnameIce35)
-tempKa_r,massKa_r,bscatKa_r,DeqKa_r,extKa_r,scatKa_r,gKa_r,vfallKa_r=readScatProfR(fnameRain35)
+temp_r,mass_r,bscat_r,Deq_r,ext_r,scat_r,g_r,vfall_r,fh=readScatProfR(fnameRain)
+wl=fh['wavelength'][:]*1000
+fact=1e6/np.pi**5/0.93*wl**4
+import matplotlib.pyplot as plt
+#plt.semilogy(bscat_r[9,:]*fact)
+#plt.semilogy(Deq_r**6)
 #stop
+tempKa,massKa,fractionKa,bscatKa,DeqKa,extKa,scatKa,gKa,vfallKa=readScatProf(fnameIce35)
+tempKa_r,massKa_r,bscatKa_r,DeqKa_r,extKa_r,scatKa_r,gKa_r,vfallKa_r,fh=readScatProfR(fnameRain35)
+
 freq=13.8
 freqKa=35.5
 #freq=94.0
@@ -152,41 +161,42 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
     a=np.nonzero(rwc>0.01)
     nw_r,lambd_r=nw_lambd(rwc[a],ncr[a],mu)
     nwr=rwc.copy()*0.0
-    nwr[a]=np.log10(nw_r)
-    
     w_r=rwc[a].copy()*0.0
     z_r=rwc[a].copy()*0.0
     att_r=rwc[a].copy()*0.0
     dm_r=rwc[a].copy()*0.0
-    get_Z(nw_r,lambd_r,w_r,z_r,att_r,dm_r,Deq_r,bscat_r[9,:],ext_r[9,:],vfall_r,mu,wl)
+    get_Z(rwc[a],nw_r,lambd_r,w_r,z_r,att_r,dm_r,Deq_r,bscat_r[9,:],ext_r[9,:],vfall_r,mu,wl)
+    nwr[a]=np.log10(nw_r)
+    
     z_total[a]+=10.**(0.1*z_r)
     att_total[a]+=att_r
 
     a=np.nonzero(swc>0.01)
     nw_s,lambd_s=nw_lambd(swc[a],ncs[a],mu)
     nws=rwc.copy()*0.0
-    nws[a]=np.log10(nw_s)
     
     w_s=swc[a].copy()*0.0
     z_s=swc[a].copy()*0.0
     att_s=swc[a].copy()*0.0
     dm_s=swc[a].copy()*0.0
-    get_Z(nw_s,lambd_s,w_s,z_s,att_s,dm_s,Deq[12,:],bscat[-1,12,:],ext[-1,12,:],\
+    get_Z(swc[a],nw_s,lambd_s,w_s,z_s,att_s,dm_s,Deq[12,:],bscat[-1,12,:],ext[-1,12,:],\
           vfall[12,:],mu,wl)
+    nws[a]=np.log10(nw_s)
     z_total[a]+=10.**(0.1*z_s)
     att_total[a]+=att_s
     
     a=np.nonzero(gwc>0.01)
     nw_g,lambd_g=nw_lambd(gwc[a],ncg[a],mu)
     nwg=rwc.copy()*0.0
-    nwg[a]=np.log10(nw_g)
     
     w_g=gwc[a].copy()*0.0
     z_g=gwc[a].copy()*0.0
     att_g=gwc[a].copy()*0.0
     dm_g=gwc[a].copy()*0.0
-    get_Z(nw_g,lambd_g,w_g,z_g,att_g,dm_g,Deq[14,:],bscat[-1,14,:],ext[-1,14,:],\
+    get_Z(gwc[a],nw_g,lambd_g,w_g,z_g,att_g,dm_g,Deq[14,:],bscat[-1,14,:],ext[-1,14,:],\
           vfall[14,:],mu,wl)
+    nwg[a]=np.log10(nw_g)
+        
     z_total[a]+=10.**(0.1*z_g)
     att_total[a]+=att_g
     
@@ -194,7 +204,7 @@ def calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
     z_m=np.ma.array(z_total,mask=z_total<-10)
     z_att_m=z_m.copy()
     gett_atten(z_att_m,z_m,att_total,z)
-    return z_m,z_att_m, att_total, nwr,nws,nwg
+    return z_m,z_att_m, att_total, nwr,nws,nwg, w_r, nw_r, z_r
     
 import matplotlib.pyplot as plt
 #plt.hist(np.log10(nw_s/0.08))
@@ -202,13 +212,21 @@ import matplotlib.pyplot as plt
 #z_m,z_att_m=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,scat,g,vfall,\
 #                  Deq_r,ext_r,scat_r,g_r,vfall_r,wl)
 
-zka_m,zka_att_m,attKa,nwr,nws,nwg=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,DeqKa,extKa,bscatKa,scatKa,gKa,vfallKa,\
-                      DeqKa_r,extKa_r,bscatKa_r,scatKa_r,gKa_r,vfallKa_r,wlKa)
+zka_m,zka_att_m,attKa,nwr,nws,nwg,\
+    w_r, nw_r, z_r=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,DeqKa,extKa,bscatKa,scatKa,gKa,vfallKa,\
+                         DeqKa_r,extKa_r,bscatKa_r,scatKa_r,gKa_r,vfallKa_r,wlKa)
 
-z_m,z_att_m,att,nwr,nws,nwg=calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
+
+z_m,z_att_m,att,nwr,nws,nwg,\
+    w_r, nw_r, z_r,\
+    =calcZ(rwc,swc,gwc,ncr,ncs,ncg,z,Deq,ext,bscat,scat,g,vfall,\
                   Deq_r,ext_r,bscat_r,scat_r,g_r,vfall_r,wl)
 
+d={"w":w_r,"nw":nw_r,"z":z_r}
+import pickle
+pickle.dump(d,open('SO.pklz','wb'))
 
+stop
 a=np.nonzero(z_m[0,:,:]>0)
 
 tData=np.zeros((len(a[0]),60,11),float)

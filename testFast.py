@@ -6,7 +6,7 @@ from netCDF4 import Dataset
 fname='wrfout_d04_2018-08-03_15:00:00.nc'
 
 #fname='../LowLevel/wrfout_d03_2018-06-25_03:36:00'
-#fname='../extract_wrfout_d03_2011-05-20_23_00_00'
+fname='../extract_wrfout_d03_2011-05-20_23_00_00'
 
 def read_wrf(fname,it):
     f=Dataset(fname)
@@ -43,7 +43,8 @@ ncs=(ncs)*rho*1
 
 from scipy.special import gamma as gam
 import numpy as np
-
+a=np.nonzero(T>273.15)
+ncr[a]=ncr[a]*(1+(T[a]-273.15)*0.25)
 def nw_lambd(swc,nc,mu):
     rhow=1e6
     lambd=(nc*rhow*np.pi*gam(4+mu)/gam(1+mu)/6.0/swc)**(0.333)  # m-1
@@ -226,7 +227,7 @@ d={"w":w_r,"nw":nw_r,"z":z_r}
 import pickle
 pickle.dump(d,open('SO.pklz','wb'))
 
-stop
+#stop
 a=np.nonzero(z_m[0,:,:]>0)
 
 tData=np.zeros((len(a[0]),60,11),float)
@@ -264,7 +265,7 @@ def gridData(z_att_m,zka_att_m,att,attKa,rwc,swc,gwc,nwr,nws,nwg,z,T,ai,aj,hgrid
         tData[ic,:,10]=temp
         ic+=1
             
-gridData(z_m,zka_att_m,att,attKa,rwc,swc,gwc,nwr,nws,nwg,z,T,a[0],a[1],hgrid,tData)
+gridData(z_m,z_att_m,att,attKa,rwc,swc,gwc,nwr,nws,nwg,z,T,a[0],a[1],hgrid,tData)
 
 import xarray as xr
 a1=np.nonzero(tData[:,0,0]>0)
@@ -272,7 +273,14 @@ tData=tData[a1[0],:,:]
 tDataX=xr.DataArray(tData)
 d=xr.Dataset({"tData":tDataX})
 d.to_netcdf("trainingData.nc")
-
+zka=tData[:,:,1].copy()
+zka[zka<0]=0
+zku=tData[:,:,0].copy()
+zku[zku<0]=0
+hgrid=np.arange(60)*0.25
+plt.plot(zku.mean(axis=0),hgrid)
+plt.plot(zka.mean(axis=0),hgrid)
+stop
 nx=z_m.shape[-1]
 plt.pcolormesh(np.arange(nx),z[:-1,0,0],zka_att_m[:,250,:],vmin=0, vmax=35,cmap='jet')
 plt.ylim(0,15)
